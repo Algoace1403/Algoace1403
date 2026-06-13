@@ -11,13 +11,18 @@ public class Main {
                 String input = scanner.nextLine();
                 
                 // 1. Check for the exit command
-                // CodeCrafters tests this by sending "exit 0"
                 if (input.equals("exit 0") || input.equals("exit")) {
-                    break; // This breaks the while loop and safely ends the program
+                    break;
+                } 
+                // 2. Check for the echo command
+                else if (input.startsWith("echo ")) {
+                    // Extract and print everything after "echo " (index 5)
+                    System.out.println(input.substring(5));
+                } 
+                // 3. Otherwise, treat it as an invalid command
+                else {
+                    System.out.println(input + ": command not found");
                 }
-                
-                // 2. Otherwise, treat it as an invalid command
-                System.out.println(input + ": command not found");
             }
         }
     }
