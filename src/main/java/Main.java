@@ -1,4 +1,5 @@
 import java.util.Scanner;
+import java.io.File;
 
 public class Main {
     public static void main(String[] args) throws Exception {
@@ -22,11 +23,29 @@ public class Main {
                 else if (input.startsWith("type ")) {
                     String commandToCheck = input.substring(5);
                     
-                    // Check if it's a known builtin
                     if (commandToCheck.equals("exit") || commandToCheck.equals("echo") || commandToCheck.equals("type")) {
                         System.out.println(commandToCheck + " is a shell builtin");
                     } else {
-                        System.out.println(commandToCheck + ": not found");
+                        // Search the PATH for the executable
+                        String pathEnv = System.getenv("PATH");
+                        boolean found = false;
+                        
+                        if (pathEnv != null) {
+                            // Split the PATH by ":" (which is the separator used on macOS)
+                            String[] paths = pathEnv.split(":");
+                            for (String path : paths) {
+                                File file = new File(path + "/" + commandToCheck);
+                                if (file.exists() && file.canExecute()) {
+                                    System.out.println(commandToCheck + " is " + file.getAbsolutePath());
+                                    found = true;
+                                    break; // Stop searching once found
+                                }
+                            }
+                        }
+                        
+                        if (!found) {
+                            System.out.println(commandToCheck + ": not found");
+                        }
                     }
                 }
                 // 4. Invalid command
