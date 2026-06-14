@@ -4,8 +4,6 @@ import java.io.File;
 public class Main {
     public static void main(String[] args) throws Exception {
         Scanner scanner = new Scanner(System.in);
-        
-        // Track the current working directory for Navigation stages
         String currentDirectory = System.getProperty("user.dir");
         
         while (true) {
@@ -26,16 +24,30 @@ public class Main {
                 else if (input.startsWith("echo ")) {
                     System.out.println(input.substring(5));
                 } 
-                // 3. Check for pwd (NEW!)
+                // 3. Check for pwd
                 else if (input.equals("pwd")) {
                     System.out.println(currentDirectory);
                 }
-                // 4. Check for type
+                // 4. Check for cd (NEW!)
+                else if (input.startsWith("cd ")) {
+                    String targetDir = input.substring(3).trim();
+                    File dir = new File(targetDir);
+                    
+                    // Check if the path exists and is actually a folder
+                    if (dir.exists() && dir.isDirectory()) {
+                        currentDirectory = dir.getAbsolutePath(); // Update our location!
+                    } else {
+                        System.out.println("cd: " + targetDir + ": No such file or directory");
+                    }
+                }
+                // 5. Check for type
                 else if (input.startsWith("type ")) {
                     String commandToCheck = input.substring(5).trim();
                     
-                    // Added pwd to our list of known builtins!
-                    if (commandToCheck.equals("exit") || commandToCheck.equals("echo") || commandToCheck.equals("type") || commandToCheck.equals("pwd")) {
+                    // Make sure 'cd' is recognized as a builtin now!
+                    if (commandToCheck.equals("exit") || commandToCheck.equals("echo") || 
+                        commandToCheck.equals("type") || commandToCheck.equals("pwd") || 
+                        commandToCheck.equals("cd")) {
                         System.out.println(commandToCheck + " is a shell builtin");
                     } else {
                         String pathEnv = System.getenv("PATH");
@@ -58,14 +70,13 @@ public class Main {
                         }
                     }
                 }
-                // 5. Run external program
+                // 6. Run external program
                 else {
                     String[] cmdArgs = input.split(" ");
                     String command = cmdArgs[0];
                     
                     try {
                         ProcessBuilder pb = new ProcessBuilder(cmdArgs);
-                        // Tell the external program to run inside our current directory
                         pb.directory(new File(currentDirectory));
                         pb.inheritIO(); 
                         Process process = pb.start();
