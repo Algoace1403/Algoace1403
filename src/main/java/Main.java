@@ -5,13 +5,15 @@ public class Main {
     public static void main(String[] args) throws Exception {
         Scanner scanner = new Scanner(System.in);
         
+        // Track the current working directory for Navigation stages
+        String currentDirectory = System.getProperty("user.dir");
+        
         while (true) {
             System.out.print("$ ");
             
             if (scanner.hasNextLine()) {
                 String input = scanner.nextLine();
                 
-                // Handle empty input (just hitting Enter)
                 if (input.trim().isEmpty()) {
                     continue;
                 }
@@ -24,14 +26,18 @@ public class Main {
                 else if (input.startsWith("echo ")) {
                     System.out.println(input.substring(5));
                 } 
-                // 3. Check for type
+                // 3. Check for pwd (NEW!)
+                else if (input.equals("pwd")) {
+                    System.out.println(currentDirectory);
+                }
+                // 4. Check for type
                 else if (input.startsWith("type ")) {
                     String commandToCheck = input.substring(5).trim();
                     
-                    if (commandToCheck.equals("exit") || commandToCheck.equals("echo") || commandToCheck.equals("type")) {
+                    // Added pwd to our list of known builtins!
+                    if (commandToCheck.equals("exit") || commandToCheck.equals("echo") || commandToCheck.equals("type") || commandToCheck.equals("pwd")) {
                         System.out.println(commandToCheck + " is a shell builtin");
                     } else {
-                        // Search the PATH for the executable
                         String pathEnv = System.getenv("PATH");
                         boolean found = false;
                         
@@ -52,25 +58,19 @@ public class Main {
                         }
                     }
                 }
-                // 4. Run external program!
+                // 5. Run external program
                 else {
-                    // Split the input into the command and its arguments (e.g., "ls" "-l" "/tmp")
                     String[] cmdArgs = input.split(" ");
                     String command = cmdArgs[0];
                     
                     try {
-                        // ProcessBuilder asks the Mac OS to run this array of strings
                         ProcessBuilder pb = new ProcessBuilder(cmdArgs);
-                        
-                        // inheritIO() is magic: it connects the new program's output directly to your terminal screen
+                        // Tell the external program to run inside our current directory
+                        pb.directory(new File(currentDirectory));
                         pb.inheritIO(); 
-                        
                         Process process = pb.start();
-                        
-                        // Wait for the external program to finish before printing the next "$ "
                         process.waitFor(); 
                     } catch (Exception e) {
-                        // If the OS throws an error because the file doesn't exist in the PATH
                         System.out.println(command + ": command not found");
                     }
                 }
