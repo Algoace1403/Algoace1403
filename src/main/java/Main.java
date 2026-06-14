@@ -1,5 +1,8 @@
 import java.util.Scanner;
 import java.io.File;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.nio.file.Files;
 
 public class Main {
     public static void main(String[] args) throws Exception {
@@ -28,14 +31,20 @@ public class Main {
                 else if (input.equals("pwd")) {
                     System.out.println(currentDirectory);
                 }
-                // 4. Check for cd (NEW!)
+                // 4. Check for cd (UPGRADED for Relative Paths!)
                 else if (input.startsWith("cd ")) {
                     String targetDir = input.substring(3).trim();
-                    File dir = new File(targetDir);
                     
-                    // Check if the path exists and is actually a folder
-                    if (dir.exists() && dir.isDirectory()) {
-                        currentDirectory = dir.getAbsolutePath(); // Update our location!
+                    // Create a Path object for our current location
+                    Path currentPath = Paths.get(currentDirectory);
+                    
+                    // Let Java resolve the relative path (like "../") against our current location
+                    // .normalize() cleans it up (e.g., turns /user/aks/../bin into /user/bin)
+                    Path resolvedPath = currentPath.resolve(targetDir).normalize();
+                    
+                    if (Files.exists(resolvedPath) && Files.isDirectory(resolvedPath)) {
+                        // Success! Update our location tracking variable
+                        currentDirectory = resolvedPath.toAbsolutePath().toString();
                     } else {
                         System.out.println("cd: " + targetDir + ": No such file or directory");
                     }
@@ -44,7 +53,6 @@ public class Main {
                 else if (input.startsWith("type ")) {
                     String commandToCheck = input.substring(5).trim();
                     
-                    // Make sure 'cd' is recognized as a builtin now!
                     if (commandToCheck.equals("exit") || commandToCheck.equals("echo") || 
                         commandToCheck.equals("type") || commandToCheck.equals("pwd") || 
                         commandToCheck.equals("cd")) {
