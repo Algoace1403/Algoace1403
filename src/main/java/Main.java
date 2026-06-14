@@ -31,19 +31,23 @@ public class Main {
                 else if (input.equals("pwd")) {
                     System.out.println(currentDirectory);
                 }
-                // 4. Check for cd (UPGRADED for Relative Paths!)
+                // 4. Check for cd (UPGRADED for Home Directory!)
                 else if (input.startsWith("cd ")) {
                     String targetDir = input.substring(3).trim();
                     
-                    // Create a Path object for our current location
-                    Path currentPath = Paths.get(currentDirectory);
+                    // NEW: Handle the '~' symbol
+                    if (targetDir.startsWith("~")) {
+                        String homeDir = System.getenv("HOME");
+                        if (homeDir != null) {
+                            // Replace the leading '~' with the actual home directory path
+                            targetDir = targetDir.replaceFirst("^~", homeDir);
+                        }
+                    }
                     
-                    // Let Java resolve the relative path (like "../") against our current location
-                    // .normalize() cleans it up (e.g., turns /user/aks/../bin into /user/bin)
+                    Path currentPath = Paths.get(currentDirectory);
                     Path resolvedPath = currentPath.resolve(targetDir).normalize();
                     
                     if (Files.exists(resolvedPath) && Files.isDirectory(resolvedPath)) {
-                        // Success! Update our location tracking variable
                         currentDirectory = resolvedPath.toAbsolutePath().toString();
                     } else {
                         System.out.println("cd: " + targetDir + ": No such file or directory");
