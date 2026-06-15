@@ -28,11 +28,11 @@ public class Main {
                 List<String> commandTokens = new ArrayList<>();
                 String redirectOutFile = null;
                 String redirectErrFile = null;
-                boolean appendOut = false; // NEW: Track if we are appending stdout
+                boolean appendOut = false;
+                boolean appendErr = false; // NEW: Track if we are appending stderr
                 
                 for (int i = 0; i < tokens.size(); i++) {
                     String t = tokens.get(i);
-                    // NEW: Check for append operators >> and 1>>
                     if (t.equals(">>") || t.equals("1>>")) {
                         if (i + 1 < tokens.size()) {
                             redirectOutFile = tokens.get(i + 1);
@@ -45,9 +45,17 @@ public class Main {
                             appendOut = false;
                             i++; 
                         }
+                    // NEW: Check for append error operator 2>>
+                    } else if (t.equals("2>>")) {
+                        if (i + 1 < tokens.size()) {
+                            redirectErrFile = tokens.get(i + 1);
+                            appendErr = true;
+                            i++; 
+                        }
                     } else if (t.equals("2>")) {
                         if (i + 1 < tokens.size()) {
                             redirectErrFile = tokens.get(i + 1);
+                            appendErr = false;
                             i++; 
                         }
                     } else {
@@ -64,7 +72,7 @@ public class Main {
                     if (rFile.getParentFile() != null) rFile.getParentFile().mkdirs();
                     Files.writeString(rFile.toPath(), ""); 
                 }
-                if (redirectErrFile != null) {
+                if (redirectErrFile != null && !appendErr) {
                     File eFile = Paths.get(currentDirectory).resolve(redirectErrFile).toFile();
                     if (eFile.getParentFile() != null) eFile.getParentFile().mkdirs();
                     Files.writeString(eFile.toPath(), ""); 
@@ -99,7 +107,7 @@ public class Main {
                         if (Files.exists(resolvedPath) && Files.isDirectory(resolvedPath)) {
                             currentDirectory = resolvedPath.toAbsolutePath().toString();
                         } else {
-                            printError("cd: " + targetDir + ": No such file or directory", redirectErrFile, currentDirectory);
+                            printError("cd: " + targetDir + ": No such file or directory", redirectErrFile, currentDirectory, appendErr);
                         }
                     }
                 }
@@ -127,7 +135,7 @@ public class Main {
                                 }
                             }
                             if (!found) {
-                                printError(commandToCheck + ": not found", redirectErrFile, currentDirectory);
+                                printError(commandToCheck + ": not found", redirectErrFile, currentDirectory, appendErr);
                             }
                         }
                     }
@@ -143,8 +151,6 @@ public class Main {
                         if (redirectOutFile != null) {
                             File rFile = Paths.get(currentDirectory).resolve(redirectOutFile).toFile();
                             if (rFile.getParentFile() != null) rFile.getParentFile().mkdirs();
-                            
-                            // NEW: Tell ProcessBuilder to append!
                             if (appendOut) {
                                 pb.redirectOutput(ProcessBuilder.Redirect.appendTo(rFile));
                             } else {
@@ -156,7 +162,14 @@ public class Main {
 
                         if (redirectErrFile != null) {
                             File eFile = Paths.get(currentDirectory).resolve(redirectErrFile).toFile();
-                            pb.redirectError(eFile);
+                            if (eFile.getParentFile() != null) eFile.getParentFile().mkdirs();
+                            
+                            // NEW: Tell ProcessBuilder to append errors!
+                            if (appendErr) {
+                                pb.redirectError(ProcessBuilder.Redirect.appendTo(eFile));
+                            } else {
+                                pb.redirectError(eFile);
+                            }
                         } else {
                             pb.redirectError(ProcessBuilder.Redirect.INHERIT); 
                         }
@@ -164,21 +177,19 @@ public class Main {
                         Process process = pb.start();
                         process.waitFor(); 
                     } catch (Exception e) {
-                        printError(command + ": command not found", redirectErrFile, currentDirectory);
+                        printError(command + ": command not found", redirectErrFile, currentDirectory, appendErr);
                     }
                 }
             }
         }
     }
 
-    // --- UPGRADED HELPER METHOD ---
     private static void printOutput(String output, String redirectFile, String currentDirectory, boolean appendOut) throws Exception {
         if (redirectFile != null) {
             Path filePath = Paths.get(currentDirectory).resolve(redirectFile);
             File file = filePath.toFile();
             if (file.getParentFile() != null) file.getParentFile().mkdirs();
             
-            // NEW: Use StandardOpenOption to safely append text for built-in commands
             if (appendOut) {
                 Files.writeString(filePath, output + "\n", StandardOpenOption.CREATE, StandardOpenOption.APPEND);
             } else {
@@ -189,12 +200,19 @@ public class Main {
         }
     }
 
-    private static void printError(String errorMsg, String redirectFile, String currentDirectory) throws Exception {
+    // --- UPGRADED HELPER METHOD ---
+    private static void printError(String errorMsg, String redirectFile, String currentDirectory, boolean appendErr) throws Exception {
         if (redirectFile != null) {
             Path filePath = Paths.get(currentDirectory).resolve(redirectFile);
             File file = filePath.toFile();
             if (file.getParentFile() != null) file.getParentFile().mkdirs();
-            Files.writeString(filePath, errorMsg + "\n");
+            
+            // NEW: Use StandardOpenOption to safely append error text for built-in commands
+            if (appendErr) {
+                Files.writeString(filePath, errorMsg + "\n", StandardOpenOption.CREATE, StandardOpenOption.APPEND);
+            } else {
+                Files.writeString(filePath, errorMsg + "\n");
+            }
         } else {
             System.out.println(errorMsg);
         }
