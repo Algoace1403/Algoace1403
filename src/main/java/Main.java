@@ -3,6 +3,7 @@ import java.io.File;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.Files;
+import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -27,12 +28,21 @@ public class Main {
                 List<String> commandTokens = new ArrayList<>();
                 String redirectOutFile = null;
                 String redirectErrFile = null;
+                boolean appendOut = false; // NEW: Track if we are appending stdout
                 
                 for (int i = 0; i < tokens.size(); i++) {
                     String t = tokens.get(i);
-                    if (t.equals(">") || t.equals("1>")) {
+                    // NEW: Check for append operators >> and 1>>
+                    if (t.equals(">>") || t.equals("1>>")) {
                         if (i + 1 < tokens.size()) {
                             redirectOutFile = tokens.get(i + 1);
+                            appendOut = true;
+                            i++; 
+                        }
+                    } else if (t.equals(">") || t.equals("1>")) {
+                        if (i + 1 < tokens.size()) {
+                            redirectOutFile = tokens.get(i + 1);
+                            appendOut = false;
                             i++; 
                         }
                     } else if (t.equals("2>")) {
@@ -48,9 +58,8 @@ public class Main {
                 if (commandTokens.isEmpty()) continue;
                 String command = commandTokens.get(0);
                 
-                // --- THE CRITICAL MISSING BLOCK ---
-                // We MUST manually create empty files for built-ins if redirection is present
-                if (redirectOutFile != null) {
+                // Only create EMPTY files immediately if we are NOT appending
+                if (redirectOutFile != null && !appendOut) {
                     File rFile = Paths.get(currentDirectory).resolve(redirectOutFile).toFile();
                     if (rFile.getParentFile() != null) rFile.getParentFile().mkdirs();
                     Files.writeString(rFile.toPath(), ""); 
@@ -68,11 +77,11 @@ public class Main {
                 // 2. Check for echo
                 else if (command.equals("echo")) {
                     String output = String.join(" ", commandTokens.subList(1, commandTokens.size()));
-                    printOutput(output, redirectOutFile, currentDirectory);
+                    printOutput(output, redirectOutFile, currentDirectory, appendOut);
                 } 
                 // 3. Check for pwd
                 else if (command.equals("pwd")) {
-                    printOutput(currentDirectory, redirectOutFile, currentDirectory);
+                    printOutput(currentDirectory, redirectOutFile, currentDirectory, appendOut);
                 }
                 // 4. Check for cd
                 else if (command.equals("cd")) {
@@ -102,7 +111,7 @@ public class Main {
                         if (commandToCheck.equals("exit") || commandToCheck.equals("echo") || 
                             commandToCheck.equals("type") || commandToCheck.equals("pwd") || 
                             commandToCheck.equals("cd")) {
-                            printOutput(commandToCheck + " is a shell builtin", redirectOutFile, currentDirectory);
+                            printOutput(commandToCheck + " is a shell builtin", redirectOutFile, currentDirectory, appendOut);
                         } else {
                             String pathEnv = System.getenv("PATH");
                             boolean found = false;
@@ -111,7 +120,7 @@ public class Main {
                                 for (String path : paths) {
                                     File file = new File(path + "/" + commandToCheck);
                                     if (file.exists() && file.canExecute()) {
-                                        printOutput(commandToCheck + " is " + file.getAbsolutePath(), redirectOutFile, currentDirectory);
+                                        printOutput(commandToCheck + " is " + file.getAbsolutePath(), redirectOutFile, currentDirectory, appendOut);
                                         found = true;
                                         break;
                                     }
@@ -133,7 +142,14 @@ public class Main {
                         
                         if (redirectOutFile != null) {
                             File rFile = Paths.get(currentDirectory).resolve(redirectOutFile).toFile();
-                            pb.redirectOutput(rFile);
+                            if (rFile.getParentFile() != null) rFile.getParentFile().mkdirs();
+                            
+                            // NEW: Tell ProcessBuilder to append!
+                            if (appendOut) {
+                                pb.redirectOutput(ProcessBuilder.Redirect.appendTo(rFile));
+                            } else {
+                                pb.redirectOutput(rFile);
+                            }
                         } else {
                             pb.redirectOutput(ProcessBuilder.Redirect.INHERIT); 
                         }
@@ -155,12 +171,19 @@ public class Main {
         }
     }
 
-    private static void printOutput(String output, String redirectFile, String currentDirectory) throws Exception {
+    // --- UPGRADED HELPER METHOD ---
+    private static void printOutput(String output, String redirectFile, String currentDirectory, boolean appendOut) throws Exception {
         if (redirectFile != null) {
             Path filePath = Paths.get(currentDirectory).resolve(redirectFile);
             File file = filePath.toFile();
             if (file.getParentFile() != null) file.getParentFile().mkdirs();
-            Files.writeString(filePath, output + "\n");
+            
+            // NEW: Use StandardOpenOption to safely append text for built-in commands
+            if (appendOut) {
+                Files.writeString(filePath, output + "\n", StandardOpenOption.CREATE, StandardOpenOption.APPEND);
+            } else {
+                Files.writeString(filePath, output + "\n");
+            }
         } else {
             System.out.println(output);
         }
