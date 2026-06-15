@@ -21,11 +21,10 @@ public class Main {
                     continue;
                 }
                 
-                // NEW: Use our custom parser to break the input into safe pieces
                 List<String> tokens = parseArguments(input);
                 if (tokens.isEmpty()) continue;
                 
-                String command = tokens.get(0); // The first piece is always the command
+                String command = tokens.get(0);
                 
                 // 1. Check for exit
                 if (command.equals("exit")) {
@@ -33,7 +32,6 @@ public class Main {
                 } 
                 // 2. Check for echo
                 else if (command.equals("echo")) {
-                    // Rejoin the remaining pieces with a single space and print
                     String output = String.join(" ", tokens.subList(1, tokens.size()));
                     System.out.println(output);
                 } 
@@ -45,14 +43,12 @@ public class Main {
                 else if (command.equals("cd")) {
                     if (tokens.size() > 1) {
                         String targetDir = tokens.get(1);
-                        
                         if (targetDir.startsWith("~")) {
                             String homeDir = System.getenv("HOME");
                             if (homeDir != null) {
                                 targetDir = targetDir.replaceFirst("^~", homeDir);
                             }
                         }
-                        
                         Path currentPath = Paths.get(currentDirectory);
                         Path resolvedPath = currentPath.resolve(targetDir).normalize();
                         
@@ -75,7 +71,6 @@ public class Main {
                         } else {
                             String pathEnv = System.getenv("PATH");
                             boolean found = false;
-                            
                             if (pathEnv != null) {
                                 String[] paths = pathEnv.split(":");
                                 for (String path : paths) {
@@ -87,7 +82,6 @@ public class Main {
                                     }
                                 }
                             }
-                            
                             if (!found) {
                                 System.out.println(commandToCheck + ": not found");
                             }
@@ -97,7 +91,6 @@ public class Main {
                 // 6. Run external program
                 else {
                     try {
-                        // ProcessBuilder accepts our List<String> directly!
                         ProcessBuilder pb = new ProcessBuilder(tokens);
                         pb.directory(new File(currentDirectory));
                         pb.inheritIO(); 
@@ -111,35 +104,42 @@ public class Main {
         }
     }
 
-    // --- NEW PARSER METHOD ---
+    // --- UPGRADED PARSER METHOD ---
     private static List<String> parseArguments(String input) {
         List<String> tokens = new ArrayList<>();
         StringBuilder currentToken = new StringBuilder();
         boolean inSingleQuote = false;
+        boolean inDoubleQuote = false; // NEW: Track double quotes!
         boolean inToken = false; 
 
         for (int i = 0; i < input.length(); i++) {
             char c = input.charAt(i);
 
-            if (c == '\'') {
-                // If we hit a quote, toggle our state but do NOT add the quote to the token
+            // Toggle single quote ONLY if we are NOT inside a double quote
+            if (c == '\'' && !inDoubleQuote) {
                 inSingleQuote = !inSingleQuote;
                 inToken = true; 
-            } else if (c == ' ' && !inSingleQuote) {
-                // If we see a space OUTSIDE of quotes, the current token is finished
+            } 
+            // Toggle double quote ONLY if we are NOT inside a single quote
+            else if (c == '"' && !inSingleQuote) {
+                inDoubleQuote = !inDoubleQuote;
+                inToken = true;
+            } 
+            // Break tokens on spaces ONLY if we are completely outside ALL quotes
+            else if (c == ' ' && !inSingleQuote && !inDoubleQuote) {
                 if (inToken) {
                     tokens.add(currentToken.toString());
-                    currentToken.setLength(0); // Clear the builder for the next word
+                    currentToken.setLength(0); 
                     inToken = false;
                 }
-            } else {
-                // Otherwise, just add the letter to our current token
+            } 
+            // Otherwise, just add the letter
+            else {
                 currentToken.append(c);
                 inToken = true;
             }
         }
 
-        // Add the very last token if we finished the loop while building one
         if (inToken) {
             tokens.add(currentToken.toString());
         }
