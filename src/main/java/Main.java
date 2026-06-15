@@ -24,23 +24,21 @@ public class Main {
                 List<String> tokens = parseArguments(input);
                 if (tokens.isEmpty()) continue;
                 
-                // --- UPGRADED: Handle both Stdout and Stderr Redirection ---
                 List<String> commandTokens = new ArrayList<>();
                 String redirectOutFile = null;
                 String redirectErrFile = null;
                 
-                // Smart scan to separate the command from its redirection targets
                 for (int i = 0; i < tokens.size(); i++) {
                     String t = tokens.get(i);
                     if (t.equals(">") || t.equals("1>")) {
                         if (i + 1 < tokens.size()) {
                             redirectOutFile = tokens.get(i + 1);
-                            i++; // Skip the filename so it doesn't get added to commandTokens
+                            i++; 
                         }
                     } else if (t.equals("2>")) {
                         if (i + 1 < tokens.size()) {
                             redirectErrFile = tokens.get(i + 1);
-                            i++; // Skip the filename
+                            i++; 
                         }
                     } else {
                         commandTokens.add(t);
@@ -79,7 +77,6 @@ public class Main {
                         if (Files.exists(resolvedPath) && Files.isDirectory(resolvedPath)) {
                             currentDirectory = resolvedPath.toAbsolutePath().toString();
                         } else {
-                            // cd errors go to stderr!
                             printError("cd: " + targetDir + ": No such file or directory", redirectErrFile, currentDirectory);
                         }
                     }
@@ -108,7 +105,8 @@ public class Main {
                                 }
                             }
                             if (!found) {
-                                printOutput(commandToCheck + ": not found", redirectOutFile, currentDirectory);
+                                // Patched: Send 'not found' errors to printError so they can be captured by 2>
+                                printError(commandToCheck + ": not found", redirectErrFile, currentDirectory);
                             }
                         }
                     }
@@ -119,17 +117,20 @@ public class Main {
                         ProcessBuilder pb = new ProcessBuilder(commandTokens);
                         pb.directory(new File(currentDirectory));
                         
-                        // Handle standard output redirection
+                        // Patched: Explicitly inherit standard input to prevent commands from hanging
+                        pb.redirectInput(ProcessBuilder.Redirect.INHERIT);
+                        
                         if (redirectOutFile != null) {
                             File rFile = Paths.get(currentDirectory).resolve(redirectOutFile).toFile();
+                            if (rFile.getParentFile() != null) rFile.getParentFile().mkdirs();
                             pb.redirectOutput(rFile);
                         } else {
                             pb.redirectOutput(ProcessBuilder.Redirect.INHERIT); 
                         }
 
-                        // NEW: Handle standard error redirection
                         if (redirectErrFile != null) {
                             File eFile = Paths.get(currentDirectory).resolve(redirectErrFile).toFile();
+                            if (eFile.getParentFile() != null) eFile.getParentFile().mkdirs();
                             pb.redirectError(eFile);
                         } else {
                             pb.redirectError(ProcessBuilder.Redirect.INHERIT); 
@@ -145,28 +146,28 @@ public class Main {
         }
     }
 
-    // --- HELPER METHOD FOR STDOUT ---
     private static void printOutput(String output, String redirectFile, String currentDirectory) throws Exception {
         if (redirectFile != null) {
             Path filePath = Paths.get(currentDirectory).resolve(redirectFile);
+            File file = filePath.toFile();
+            if (file.getParentFile() != null) file.getParentFile().mkdirs();
             Files.writeString(filePath, output + "\n");
         } else {
             System.out.println(output);
         }
     }
 
-    // --- NEW HELPER METHOD FOR STDERR ---
     private static void printError(String errorMsg, String redirectFile, String currentDirectory) throws Exception {
         if (redirectFile != null) {
             Path filePath = Paths.get(currentDirectory).resolve(redirectFile);
+            File file = filePath.toFile();
+            if (file.getParentFile() != null) file.getParentFile().mkdirs();
             Files.writeString(filePath, errorMsg + "\n");
         } else {
-            // If no file is specified, just print it to the screen normally
             System.out.println(errorMsg);
         }
     }
 
-    // --- BULLETPROOF PARSER METHOD ---
     private static List<String> parseArguments(String input) {
         List<String> tokens = new ArrayList<>();
         StringBuilder currentToken = new StringBuilder();
