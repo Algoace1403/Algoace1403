@@ -24,25 +24,27 @@ public class Main {
                 List<String> tokens = parseArguments(input);
                 if (tokens.isEmpty()) continue;
                 
-                // --- NEW: Handle Output Redirection ---
-                String redirectFile = null;
-                int redirectIndex = -1;
+                // --- UPGRADED: Handle both Stdout and Stderr Redirection ---
+                List<String> commandTokens = new ArrayList<>();
+                String redirectOutFile = null;
+                String redirectErrFile = null;
                 
-                // Scan the tokens for > or 1>
+                // Smart scan to separate the command from its redirection targets
                 for (int i = 0; i < tokens.size(); i++) {
-                    if (tokens.get(i).equals(">") || tokens.get(i).equals("1>")) {
+                    String t = tokens.get(i);
+                    if (t.equals(">") || t.equals("1>")) {
                         if (i + 1 < tokens.size()) {
-                            redirectFile = tokens.get(i + 1);
-                            redirectIndex = i;
-                            break;
+                            redirectOutFile = tokens.get(i + 1);
+                            i++; // Skip the filename so it doesn't get added to commandTokens
                         }
+                    } else if (t.equals("2>")) {
+                        if (i + 1 < tokens.size()) {
+                            redirectErrFile = tokens.get(i + 1);
+                            i++; // Skip the filename
+                        }
+                    } else {
+                        commandTokens.add(t);
                     }
-                }
-                
-                // If we found redirection, extract the pure command by removing the > and filename
-                List<String> commandTokens = new ArrayList<>(tokens);
-                if (redirectIndex != -1) {
-                    commandTokens.subList(redirectIndex, redirectIndex + 2).clear();
                 }
                 
                 if (commandTokens.isEmpty()) continue;
@@ -55,11 +57,11 @@ public class Main {
                 // 2. Check for echo
                 else if (command.equals("echo")) {
                     String output = String.join(" ", commandTokens.subList(1, commandTokens.size()));
-                    printOutput(output, redirectFile, currentDirectory);
+                    printOutput(output, redirectOutFile, currentDirectory);
                 } 
                 // 3. Check for pwd
                 else if (command.equals("pwd")) {
-                    printOutput(currentDirectory, redirectFile, currentDirectory);
+                    printOutput(currentDirectory, redirectOutFile, currentDirectory);
                 }
                 // 4. Check for cd
                 else if (command.equals("cd")) {
@@ -77,7 +79,8 @@ public class Main {
                         if (Files.exists(resolvedPath) && Files.isDirectory(resolvedPath)) {
                             currentDirectory = resolvedPath.toAbsolutePath().toString();
                         } else {
-                            System.out.println("cd: " + targetDir + ": No such file or directory");
+                            // cd errors go to stderr!
+                            printError("cd: " + targetDir + ": No such file or directory", redirectErrFile, currentDirectory);
                         }
                     }
                 }
@@ -89,7 +92,7 @@ public class Main {
                         if (commandToCheck.equals("exit") || commandToCheck.equals("echo") || 
                             commandToCheck.equals("type") || commandToCheck.equals("pwd") || 
                             commandToCheck.equals("cd")) {
-                            printOutput(commandToCheck + " is a shell builtin", redirectFile, currentDirectory);
+                            printOutput(commandToCheck + " is a shell builtin", redirectOutFile, currentDirectory);
                         } else {
                             String pathEnv = System.getenv("PATH");
                             boolean found = false;
@@ -98,14 +101,14 @@ public class Main {
                                 for (String path : paths) {
                                     File file = new File(path + "/" + commandToCheck);
                                     if (file.exists() && file.canExecute()) {
-                                        printOutput(commandToCheck + " is " + file.getAbsolutePath(), redirectFile, currentDirectory);
+                                        printOutput(commandToCheck + " is " + file.getAbsolutePath(), redirectOutFile, currentDirectory);
                                         found = true;
                                         break;
                                     }
                                 }
                             }
                             if (!found) {
-                                printOutput(commandToCheck + ": not found", redirectFile, currentDirectory);
+                                printOutput(commandToCheck + ": not found", redirectOutFile, currentDirectory);
                             }
                         }
                     }
@@ -116,33 +119,50 @@ public class Main {
                         ProcessBuilder pb = new ProcessBuilder(commandTokens);
                         pb.directory(new File(currentDirectory));
                         
-                        // NEW: Route external program output to the file if requested!
-                        if (redirectFile != null) {
-                            File rFile = Paths.get(currentDirectory).resolve(redirectFile).toFile();
+                        // Handle standard output redirection
+                        if (redirectOutFile != null) {
+                            File rFile = Paths.get(currentDirectory).resolve(redirectOutFile).toFile();
                             pb.redirectOutput(rFile);
-                            pb.redirectError(ProcessBuilder.Redirect.INHERIT); // Keep errors on screen
                         } else {
-                            pb.inheritIO(); 
+                            pb.redirectOutput(ProcessBuilder.Redirect.INHERIT); 
+                        }
+
+                        // NEW: Handle standard error redirection
+                        if (redirectErrFile != null) {
+                            File eFile = Paths.get(currentDirectory).resolve(redirectErrFile).toFile();
+                            pb.redirectError(eFile);
+                        } else {
+                            pb.redirectError(ProcessBuilder.Redirect.INHERIT); 
                         }
                         
                         Process process = pb.start();
                         process.waitFor(); 
                     } catch (Exception e) {
-                        System.out.println(command + ": command not found");
+                        printError(command + ": command not found", redirectErrFile, currentDirectory);
                     }
                 }
             }
         }
     }
 
-    // --- NEW HELPER METHOD FOR BUILT-INS ---
+    // --- HELPER METHOD FOR STDOUT ---
     private static void printOutput(String output, String redirectFile, String currentDirectory) throws Exception {
         if (redirectFile != null) {
             Path filePath = Paths.get(currentDirectory).resolve(redirectFile);
-            // writeString handles creating the file or overwriting it automatically
             Files.writeString(filePath, output + "\n");
         } else {
             System.out.println(output);
+        }
+    }
+
+    // --- NEW HELPER METHOD FOR STDERR ---
+    private static void printError(String errorMsg, String redirectFile, String currentDirectory) throws Exception {
+        if (redirectFile != null) {
+            Path filePath = Paths.get(currentDirectory).resolve(redirectFile);
+            Files.writeString(filePath, errorMsg + "\n");
+        } else {
+            // If no file is specified, just print it to the screen normally
+            System.out.println(errorMsg);
         }
     }
 
