@@ -104,7 +104,7 @@ public class Main {
         }
     }
 
-    // --- PARSER METHOD ---
+    // --- UPGRADED PARSER METHOD ---
     private static List<String> parseArguments(String input) {
         List<String> tokens = new ArrayList<>();
         StringBuilder currentToken = new StringBuilder();
@@ -115,22 +115,44 @@ public class Main {
         for (int i = 0; i < input.length(); i++) {
             char c = input.charAt(i);
 
-            // Our parser already handles this stage perfectly because of !inSingleQuote here!
-            if (c == '\\' && !inSingleQuote && !inDoubleQuote) {
-                if (i + 1 < input.length()) {
-                    currentToken.append(input.charAt(i + 1));
+            // 1. Backslash Logic
+            if (c == '\\') {
+                if (inSingleQuote) {
+                    // Inside single quotes: Treat literally
+                    currentToken.append(c);
                     inToken = true;
-                    i++; 
+                } else if (inDoubleQuote) {
+                    // Inside double quotes: Only escape specific characters
+                    if (i + 1 < input.length()) {
+                        char next = input.charAt(i + 1);
+                        if (next == '\\' || next == '"' || next == '$' || next == '\n') {
+                            currentToken.append(next);
+                            i++; // Skip the escaped character
+                        } else {
+                            currentToken.append(c); // Treat backslash literally
+                        }
+                        inToken = true;
+                    }
+                } else {
+                    // Outside quotes: Always escape the next character
+                    if (i + 1 < input.length()) {
+                        currentToken.append(input.charAt(i + 1));
+                        i++; 
+                        inToken = true;
+                    }
                 }
-            }
+            } 
+            // 2. Single Quote Logic
             else if (c == '\'' && !inDoubleQuote) {
                 inSingleQuote = !inSingleQuote;
                 inToken = true; 
             } 
+            // 3. Double Quote Logic
             else if (c == '"' && !inSingleQuote) {
                 inDoubleQuote = !inDoubleQuote;
                 inToken = true;
             } 
+            // 4. Space Logic (Word Breaks)
             else if (c == ' ' && !inSingleQuote && !inDoubleQuote) {
                 if (inToken) {
                     tokens.add(currentToken.toString());
@@ -138,12 +160,14 @@ public class Main {
                     inToken = false;
                 }
             } 
+            // 5. Normal Characters
             else {
                 currentToken.append(c);
                 inToken = true;
             }
         }
 
+        // Add the final token if we reached the end of the string while building one
         if (inToken) {
             tokens.add(currentToken.toString());
         }
