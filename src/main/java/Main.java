@@ -104,19 +104,28 @@ public class Main {
         }
     }
 
-    // --- UPGRADED PARSER METHOD ---
+    // --- PARSER METHOD ---
     private static List<String> parseArguments(String input) {
         List<String> tokens = new ArrayList<>();
         StringBuilder currentToken = new StringBuilder();
         boolean inSingleQuote = false;
-        boolean inDoubleQuote = false; // NEW: Track double quotes!
+        boolean inDoubleQuote = false; 
         boolean inToken = false; 
 
         for (int i = 0; i < input.length(); i++) {
             char c = input.charAt(i);
 
+            // NEW: Handle backslash outside of quotes
+            if (c == '\\' && !inSingleQuote && !inDoubleQuote) {
+                // Check to make sure the backslash isn't the very last character
+                if (i + 1 < input.length()) {
+                    currentToken.append(input.charAt(i + 1));
+                    inToken = true;
+                    i++; // Skip the next character since we just manually added it
+                }
+            }
             // Toggle single quote ONLY if we are NOT inside a double quote
-            if (c == '\'' && !inDoubleQuote) {
+            else if (c == '\'' && !inDoubleQuote) {
                 inSingleQuote = !inSingleQuote;
                 inToken = true; 
             } 
