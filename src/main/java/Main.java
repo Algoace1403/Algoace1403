@@ -115,26 +115,22 @@ public class Main {
         for (int i = 0; i < input.length(); i++) {
             char c = input.charAt(i);
 
-            // NEW: Handle backslash outside of quotes
+            // Our parser already handles this stage perfectly because of !inSingleQuote here!
             if (c == '\\' && !inSingleQuote && !inDoubleQuote) {
-                // Check to make sure the backslash isn't the very last character
                 if (i + 1 < input.length()) {
                     currentToken.append(input.charAt(i + 1));
                     inToken = true;
-                    i++; // Skip the next character since we just manually added it
+                    i++; 
                 }
             }
-            // Toggle single quote ONLY if we are NOT inside a double quote
             else if (c == '\'' && !inDoubleQuote) {
                 inSingleQuote = !inSingleQuote;
                 inToken = true; 
             } 
-            // Toggle double quote ONLY if we are NOT inside a single quote
             else if (c == '"' && !inSingleQuote) {
                 inDoubleQuote = !inDoubleQuote;
                 inToken = true;
             } 
-            // Break tokens on spaces ONLY if we are completely outside ALL quotes
             else if (c == ' ' && !inSingleQuote && !inDoubleQuote) {
                 if (inToken) {
                     tokens.add(currentToken.toString());
@@ -142,7 +138,6 @@ public class Main {
                     inToken = false;
                 }
             } 
-            // Otherwise, just add the letter
             else {
                 currentToken.append(c);
                 inToken = true;
