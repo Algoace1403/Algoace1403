@@ -48,6 +48,19 @@ public class Main {
                 if (commandTokens.isEmpty()) continue;
                 String command = commandTokens.get(0);
                 
+                // --- THE CRITICAL MISSING BLOCK ---
+                // We MUST manually create empty files for built-ins if redirection is present
+                if (redirectOutFile != null) {
+                    File rFile = Paths.get(currentDirectory).resolve(redirectOutFile).toFile();
+                    if (rFile.getParentFile() != null) rFile.getParentFile().mkdirs();
+                    Files.writeString(rFile.toPath(), ""); 
+                }
+                if (redirectErrFile != null) {
+                    File eFile = Paths.get(currentDirectory).resolve(redirectErrFile).toFile();
+                    if (eFile.getParentFile() != null) eFile.getParentFile().mkdirs();
+                    Files.writeString(eFile.toPath(), ""); 
+                }
+
                 // 1. Check for exit
                 if (command.equals("exit")) {
                     break;
@@ -105,7 +118,6 @@ public class Main {
                                 }
                             }
                             if (!found) {
-                                // Patched: Send 'not found' errors to printError so they can be captured by 2>
                                 printError(commandToCheck + ": not found", redirectErrFile, currentDirectory);
                             }
                         }
@@ -117,12 +129,10 @@ public class Main {
                         ProcessBuilder pb = new ProcessBuilder(commandTokens);
                         pb.directory(new File(currentDirectory));
                         
-                        // Patched: Explicitly inherit standard input to prevent commands from hanging
                         pb.redirectInput(ProcessBuilder.Redirect.INHERIT);
                         
                         if (redirectOutFile != null) {
                             File rFile = Paths.get(currentDirectory).resolve(redirectOutFile).toFile();
-                            if (rFile.getParentFile() != null) rFile.getParentFile().mkdirs();
                             pb.redirectOutput(rFile);
                         } else {
                             pb.redirectOutput(ProcessBuilder.Redirect.INHERIT); 
@@ -130,7 +140,6 @@ public class Main {
 
                         if (redirectErrFile != null) {
                             File eFile = Paths.get(currentDirectory).resolve(redirectErrFile).toFile();
-                            if (eFile.getParentFile() != null) eFile.getParentFile().mkdirs();
                             pb.redirectError(eFile);
                         } else {
                             pb.redirectError(ProcessBuilder.Redirect.INHERIT); 
