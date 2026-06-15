@@ -24,7 +24,29 @@ public class Main {
                 List<String> tokens = parseArguments(input);
                 if (tokens.isEmpty()) continue;
                 
-                String command = tokens.get(0);
+                // --- NEW: Handle Output Redirection ---
+                String redirectFile = null;
+                int redirectIndex = -1;
+                
+                // Scan the tokens for > or 1>
+                for (int i = 0; i < tokens.size(); i++) {
+                    if (tokens.get(i).equals(">") || tokens.get(i).equals("1>")) {
+                        if (i + 1 < tokens.size()) {
+                            redirectFile = tokens.get(i + 1);
+                            redirectIndex = i;
+                            break;
+                        }
+                    }
+                }
+                
+                // If we found redirection, extract the pure command by removing the > and filename
+                List<String> commandTokens = new ArrayList<>(tokens);
+                if (redirectIndex != -1) {
+                    commandTokens.subList(redirectIndex, redirectIndex + 2).clear();
+                }
+                
+                if (commandTokens.isEmpty()) continue;
+                String command = commandTokens.get(0);
                 
                 // 1. Check for exit
                 if (command.equals("exit")) {
@@ -32,17 +54,17 @@ public class Main {
                 } 
                 // 2. Check for echo
                 else if (command.equals("echo")) {
-                    String output = String.join(" ", tokens.subList(1, tokens.size()));
-                    System.out.println(output);
+                    String output = String.join(" ", commandTokens.subList(1, commandTokens.size()));
+                    printOutput(output, redirectFile, currentDirectory);
                 } 
                 // 3. Check for pwd
                 else if (command.equals("pwd")) {
-                    System.out.println(currentDirectory);
+                    printOutput(currentDirectory, redirectFile, currentDirectory);
                 }
                 // 4. Check for cd
                 else if (command.equals("cd")) {
-                    if (tokens.size() > 1) {
-                        String targetDir = tokens.get(1);
+                    if (commandTokens.size() > 1) {
+                        String targetDir = commandTokens.get(1);
                         if (targetDir.startsWith("~")) {
                             String homeDir = System.getenv("HOME");
                             if (homeDir != null) {
@@ -61,13 +83,13 @@ public class Main {
                 }
                 // 5. Check for type
                 else if (command.equals("type")) {
-                    if (tokens.size() > 1) {
-                        String commandToCheck = tokens.get(1);
+                    if (commandTokens.size() > 1) {
+                        String commandToCheck = commandTokens.get(1);
                         
                         if (commandToCheck.equals("exit") || commandToCheck.equals("echo") || 
                             commandToCheck.equals("type") || commandToCheck.equals("pwd") || 
                             commandToCheck.equals("cd")) {
-                            System.out.println(commandToCheck + " is a shell builtin");
+                            printOutput(commandToCheck + " is a shell builtin", redirectFile, currentDirectory);
                         } else {
                             String pathEnv = System.getenv("PATH");
                             boolean found = false;
@@ -76,14 +98,14 @@ public class Main {
                                 for (String path : paths) {
                                     File file = new File(path + "/" + commandToCheck);
                                     if (file.exists() && file.canExecute()) {
-                                        System.out.println(commandToCheck + " is " + file.getAbsolutePath());
+                                        printOutput(commandToCheck + " is " + file.getAbsolutePath(), redirectFile, currentDirectory);
                                         found = true;
                                         break;
                                     }
                                 }
                             }
                             if (!found) {
-                                System.out.println(commandToCheck + ": not found");
+                                printOutput(commandToCheck + ": not found", redirectFile, currentDirectory);
                             }
                         }
                     }
@@ -91,9 +113,18 @@ public class Main {
                 // 6. Run external program
                 else {
                     try {
-                        ProcessBuilder pb = new ProcessBuilder(tokens);
+                        ProcessBuilder pb = new ProcessBuilder(commandTokens);
                         pb.directory(new File(currentDirectory));
-                        pb.inheritIO(); 
+                        
+                        // NEW: Route external program output to the file if requested!
+                        if (redirectFile != null) {
+                            File rFile = Paths.get(currentDirectory).resolve(redirectFile).toFile();
+                            pb.redirectOutput(rFile);
+                            pb.redirectError(ProcessBuilder.Redirect.INHERIT); // Keep errors on screen
+                        } else {
+                            pb.inheritIO(); 
+                        }
+                        
                         Process process = pb.start();
                         process.waitFor(); 
                     } catch (Exception e) {
@@ -104,7 +135,18 @@ public class Main {
         }
     }
 
-    // --- UPGRADED PARSER METHOD ---
+    // --- NEW HELPER METHOD FOR BUILT-INS ---
+    private static void printOutput(String output, String redirectFile, String currentDirectory) throws Exception {
+        if (redirectFile != null) {
+            Path filePath = Paths.get(currentDirectory).resolve(redirectFile);
+            // writeString handles creating the file or overwriting it automatically
+            Files.writeString(filePath, output + "\n");
+        } else {
+            System.out.println(output);
+        }
+    }
+
+    // --- BULLETPROOF PARSER METHOD ---
     private static List<String> parseArguments(String input) {
         List<String> tokens = new ArrayList<>();
         StringBuilder currentToken = new StringBuilder();
@@ -115,26 +157,22 @@ public class Main {
         for (int i = 0; i < input.length(); i++) {
             char c = input.charAt(i);
 
-            // 1. Backslash Logic
             if (c == '\\') {
                 if (inSingleQuote) {
-                    // Inside single quotes: Treat literally
                     currentToken.append(c);
                     inToken = true;
                 } else if (inDoubleQuote) {
-                    // Inside double quotes: Only escape specific characters
                     if (i + 1 < input.length()) {
                         char next = input.charAt(i + 1);
                         if (next == '\\' || next == '"' || next == '$' || next == '\n') {
                             currentToken.append(next);
-                            i++; // Skip the escaped character
+                            i++; 
                         } else {
-                            currentToken.append(c); // Treat backslash literally
+                            currentToken.append(c); 
                         }
                         inToken = true;
                     }
                 } else {
-                    // Outside quotes: Always escape the next character
                     if (i + 1 < input.length()) {
                         currentToken.append(input.charAt(i + 1));
                         i++; 
@@ -142,17 +180,14 @@ public class Main {
                     }
                 }
             } 
-            // 2. Single Quote Logic
             else if (c == '\'' && !inDoubleQuote) {
                 inSingleQuote = !inSingleQuote;
                 inToken = true; 
             } 
-            // 3. Double Quote Logic
             else if (c == '"' && !inSingleQuote) {
                 inDoubleQuote = !inDoubleQuote;
                 inToken = true;
             } 
-            // 4. Space Logic (Word Breaks)
             else if (c == ' ' && !inSingleQuote && !inDoubleQuote) {
                 if (inToken) {
                     tokens.add(currentToken.toString());
@@ -160,14 +195,12 @@ public class Main {
                     inToken = false;
                 }
             } 
-            // 5. Normal Characters
             else {
                 currentToken.append(c);
                 inToken = true;
             }
         }
 
-        // Add the final token if we reached the end of the string while building one
         if (inToken) {
             tokens.add(currentToken.toString());
         }
