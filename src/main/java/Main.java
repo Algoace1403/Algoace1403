@@ -9,7 +9,6 @@ import java.util.List;
 
 public class Main {
     
-    // --- NEW: A helper class to track background jobs ---
     static class Job {
         int id;
         Process process;
@@ -42,12 +41,11 @@ public class Main {
                 List<String> tokens = parseArguments(input);
                 if (tokens.isEmpty()) continue;
                 
-                // --- NEW: Check if this is a background job ---
                 boolean isBackground = false;
                 if (tokens.get(tokens.size() - 1).equals("&")) {
                     isBackground = true;
-                    tokens.remove(tokens.size() - 1); // Remove the '&' so it doesn't get passed as an argument
-                    if (tokens.isEmpty()) continue; // Edge case: User literally just typed "&"
+                    tokens.remove(tokens.size() - 1); 
+                    if (tokens.isEmpty()) continue; 
                 }
 
                 List<String> commandTokens = new ArrayList<>();
@@ -134,9 +132,19 @@ public class Main {
                         }
                     }
                 }
-                // 5. Check for jobs
+                // 5. Check for jobs (UPGRADED!)
                 else if (command.equals("jobs")) {
-                    // Empty implementation for now!
+                    List<String> outputLines = new ArrayList<>();
+                    for (Job job : backgroundJobs) {
+                        // Ask the OS if the background thread is still alive
+                        String status = job.process.isAlive() ? "Running" : "Done";
+                        // Reconstruct the standard Unix formatting
+                        outputLines.add("[" + job.id + "] + " + status + " " + job.command + " &");
+                    }
+                    
+                    if (!outputLines.isEmpty()) {
+                        printOutput(String.join("\n", outputLines), redirectOutFile, currentDirectory, appendOut);
+                    }
                 }
                 // 6. Check for type
                 else if (command.equals("type")) {
@@ -202,14 +210,11 @@ public class Main {
                         
                         Process process = pb.start();
                         
-                        // --- UPGRADED: Handle Background Execution ---
                         if (isBackground) {
-                            // Save the job, assign it an ID, print it, and DO NOT wait!
                             Job job = new Job(nextJobId++, process, String.join(" ", commandTokens));
                             backgroundJobs.add(job);
                             System.out.println("[" + job.id + "] " + process.pid());
                         } else {
-                            // Foreground job: wait for it to finish normally
                             process.waitFor(); 
                         }
                         
