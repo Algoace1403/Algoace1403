@@ -132,15 +132,22 @@ public class Main {
                         }
                     }
                 }
-                // 5. Check for jobs (UPGRADED!)
+                // 5. Check for jobs
                 else if (command.equals("jobs")) {
                     List<String> outputLines = new ArrayList<>();
+                    List<Job> toRemove = new ArrayList<>(); // NEW: Track finished jobs
+                    
                     for (Job job : backgroundJobs) {
-                        // Ask the OS if the background thread is still alive
-                        String status = job.process.isAlive() ? "Running" : "Done";
-                        // Reconstruct the standard Unix formatting
-                        outputLines.add("[" + job.id + "] + " + status + " " + job.command + " &");
+                        if (job.process.isAlive()) {
+                            outputLines.add("[" + job.id + "] + Running " + job.command + " &");
+                        } else {
+                            outputLines.add("[" + job.id + "] + Done " + job.command + " &");
+                            toRemove.add(job); // Mark it for the Grim Reaper!
+                        }
                     }
+                    
+                    // REAP: Remove all finished jobs so they don't print next time
+                    backgroundJobs.removeAll(toRemove);
                     
                     if (!outputLines.isEmpty()) {
                         printOutput(String.join("\n", outputLines), redirectOutFile, currentDirectory, appendOut);
