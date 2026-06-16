@@ -29,7 +29,7 @@ public class Main {
                 String redirectOutFile = null;
                 String redirectErrFile = null;
                 boolean appendOut = false;
-                boolean appendErr = false; // NEW: Track if we are appending stderr
+                boolean appendErr = false; 
                 
                 for (int i = 0; i < tokens.size(); i++) {
                     String t = tokens.get(i);
@@ -45,7 +45,6 @@ public class Main {
                             appendOut = false;
                             i++; 
                         }
-                    // NEW: Check for append error operator 2>>
                     } else if (t.equals("2>>")) {
                         if (i + 1 < tokens.size()) {
                             redirectErrFile = tokens.get(i + 1);
@@ -66,7 +65,6 @@ public class Main {
                 if (commandTokens.isEmpty()) continue;
                 String command = commandTokens.get(0);
                 
-                // Only create EMPTY files immediately if we are NOT appending
                 if (redirectOutFile != null && !appendOut) {
                     File rFile = Paths.get(currentDirectory).resolve(redirectOutFile).toFile();
                     if (rFile.getParentFile() != null) rFile.getParentFile().mkdirs();
@@ -111,14 +109,20 @@ public class Main {
                         }
                     }
                 }
-                // 5. Check for type
+                // 5. Check for jobs (NEW!)
+                else if (command.equals("jobs")) {
+                    // Empty implementation: We do absolutely nothing here for now, 
+                    // which makes the loop naturally return to the "$ " prompt!
+                }
+                // 6. Check for type
                 else if (command.equals("type")) {
                     if (commandTokens.size() > 1) {
                         String commandToCheck = commandTokens.get(1);
                         
+                        // NEW: Added "jobs" to our list of known builtins!
                         if (commandToCheck.equals("exit") || commandToCheck.equals("echo") || 
                             commandToCheck.equals("type") || commandToCheck.equals("pwd") || 
-                            commandToCheck.equals("cd")) {
+                            commandToCheck.equals("cd") || commandToCheck.equals("jobs")) {
                             printOutput(commandToCheck + " is a shell builtin", redirectOutFile, currentDirectory, appendOut);
                         } else {
                             String pathEnv = System.getenv("PATH");
@@ -140,7 +144,7 @@ public class Main {
                         }
                     }
                 }
-                // 6. Run external program
+                // 7. Run external program
                 else {
                     try {
                         ProcessBuilder pb = new ProcessBuilder(commandTokens);
@@ -164,7 +168,6 @@ public class Main {
                             File eFile = Paths.get(currentDirectory).resolve(redirectErrFile).toFile();
                             if (eFile.getParentFile() != null) eFile.getParentFile().mkdirs();
                             
-                            // NEW: Tell ProcessBuilder to append errors!
                             if (appendErr) {
                                 pb.redirectError(ProcessBuilder.Redirect.appendTo(eFile));
                             } else {
@@ -200,14 +203,12 @@ public class Main {
         }
     }
 
-    // --- UPGRADED HELPER METHOD ---
     private static void printError(String errorMsg, String redirectFile, String currentDirectory, boolean appendErr) throws Exception {
         if (redirectFile != null) {
             Path filePath = Paths.get(currentDirectory).resolve(redirectFile);
             File file = filePath.toFile();
             if (file.getParentFile() != null) file.getParentFile().mkdirs();
             
-            // NEW: Use StandardOpenOption to safely append error text for built-in commands
             if (appendErr) {
                 Files.writeString(filePath, errorMsg + "\n", StandardOpenOption.CREATE, StandardOpenOption.APPEND);
             } else {
