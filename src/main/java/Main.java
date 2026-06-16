@@ -8,6 +8,23 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class Main {
+    
+    // --- NEW: A helper class to track background jobs ---
+    static class Job {
+        int id;
+        Process process;
+        String command;
+
+        public Job(int id, Process process, String command) {
+            this.id = id;
+            this.process = process;
+            this.command = command;
+        }
+    }
+
+    private static List<Job> backgroundJobs = new ArrayList<>();
+    private static int nextJobId = 1;
+
     public static void main(String[] args) throws Exception {
         Scanner scanner = new Scanner(System.in);
         String currentDirectory = System.getProperty("user.dir");
@@ -25,6 +42,14 @@ public class Main {
                 List<String> tokens = parseArguments(input);
                 if (tokens.isEmpty()) continue;
                 
+                // --- NEW: Check if this is a background job ---
+                boolean isBackground = false;
+                if (tokens.get(tokens.size() - 1).equals("&")) {
+                    isBackground = true;
+                    tokens.remove(tokens.size() - 1); // Remove the '&' so it doesn't get passed as an argument
+                    if (tokens.isEmpty()) continue; // Edge case: User literally just typed "&"
+                }
+
                 List<String> commandTokens = new ArrayList<>();
                 String redirectOutFile = null;
                 String redirectErrFile = null;
@@ -109,17 +134,15 @@ public class Main {
                         }
                     }
                 }
-                // 5. Check for jobs (NEW!)
+                // 5. Check for jobs
                 else if (command.equals("jobs")) {
-                    // Empty implementation: We do absolutely nothing here for now, 
-                    // which makes the loop naturally return to the "$ " prompt!
+                    // Empty implementation for now!
                 }
                 // 6. Check for type
                 else if (command.equals("type")) {
                     if (commandTokens.size() > 1) {
                         String commandToCheck = commandTokens.get(1);
                         
-                        // NEW: Added "jobs" to our list of known builtins!
                         if (commandToCheck.equals("exit") || commandToCheck.equals("echo") || 
                             commandToCheck.equals("type") || commandToCheck.equals("pwd") || 
                             commandToCheck.equals("cd") || commandToCheck.equals("jobs")) {
@@ -178,7 +201,18 @@ public class Main {
                         }
                         
                         Process process = pb.start();
-                        process.waitFor(); 
+                        
+                        // --- UPGRADED: Handle Background Execution ---
+                        if (isBackground) {
+                            // Save the job, assign it an ID, print it, and DO NOT wait!
+                            Job job = new Job(nextJobId++, process, String.join(" ", commandTokens));
+                            backgroundJobs.add(job);
+                            System.out.println("[" + job.id + "] " + process.pid());
+                        } else {
+                            // Foreground job: wait for it to finish normally
+                            process.waitFor(); 
+                        }
+                        
                     } catch (Exception e) {
                         printError(command + ": command not found", redirectErrFile, currentDirectory, appendErr);
                     }
