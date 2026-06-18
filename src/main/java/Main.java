@@ -140,6 +140,7 @@ public class Main {
                     for (int i = 0; i < backgroundJobs.size(); i++) {
                         Job job = backgroundJobs.get(i);
                         
+                        // Dynamically figure out +/- signs for multiple jobs
                         char sign = ' ';
                         if (i == backgroundJobs.size() - 1) {
                             sign = '+';
@@ -152,13 +153,14 @@ public class Main {
                             String formatted = String.format("[%d]%c  %-24s%s &", job.id, sign, "Running", job.command);
                             outputLines.add(formatted);
                         } else {
-                            // Done jobs DO NOT have the '&' as per the screenshot
+                            // Done jobs DO NOT have the '&'
                             String formatted = String.format("[%d]%c  %-24s%s", job.id, sign, "Done", job.command);
                             outputLines.add(formatted);
                             toRemove.add(job);
                         }
                     }
                     
+                    // Remove ALL dead jobs we just found in one go
                     backgroundJobs.removeAll(toRemove);
                     
                     if (!outputLines.isEmpty()) {
