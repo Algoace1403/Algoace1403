@@ -30,12 +30,19 @@ public class Main {
         
         while (true) {
             
-            // --- NEW: Reap before the next prompt & Recycle Job IDs ---
+            // --- Reap before the next prompt & Recycle Job IDs ---
             List<Job> reaped = new ArrayList<>();
-            for (Job job : backgroundJobs) {
+            for (int i = 0; i < backgroundJobs.size(); i++) {
+                Job job = backgroundJobs.get(i);
                 // If a job died while we were waiting, print it and mark it for removal
                 if (!job.process.isAlive()) {
-                    System.out.println("[" + job.id + "] + Done " + job.command + " &");
+                    char sign = ' ';
+                    if (i == backgroundJobs.size() - 1) {
+                        sign = '+';
+                    } else if (i == backgroundJobs.size() - 2) {
+                        sign = '-';
+                    }
+                    System.out.printf("[%d]%c  %-24s%s &\n", job.id, sign, "Done", job.command);
                     reaped.add(job);
                 }
             }
@@ -154,11 +161,23 @@ public class Main {
                     List<String> outputLines = new ArrayList<>();
                     List<Job> toRemove = new ArrayList<>();
                     
-                    for (Job job : backgroundJobs) {
+                    for (int i = 0; i < backgroundJobs.size(); i++) {
+                        Job job = backgroundJobs.get(i);
+                        
+                        // Determine sign: last item gets '+', second to last gets '-', others get ' '
+                        char sign = ' ';
+                        if (i == backgroundJobs.size() - 1) {
+                            sign = '+';
+                        } else if (i == backgroundJobs.size() - 2) {
+                            sign = '-';
+                        }
+                        
                         if (job.process.isAlive()) {
-                            outputLines.add("[" + job.id + "] + Running " + job.command + " &");
+                            String formatted = String.format("[%d]%c  %-24s%s &", job.id, sign, "Running", job.command);
+                            outputLines.add(formatted);
                         } else {
-                            outputLines.add("[" + job.id + "] + Done " + job.command + " &");
+                            String formatted = String.format("[%d]%c  %-24s%s &", job.id, sign, "Done", job.command);
+                            outputLines.add(formatted);
                             toRemove.add(job);
                         }
                     }
