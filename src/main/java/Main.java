@@ -29,6 +29,27 @@ public class Main {
         String currentDirectory = System.getProperty("user.dir");
         
         while (true) {
+            
+            // --- NEW: Reap before the next prompt ---
+            List<Job> reapedBeforePrompt = new ArrayList<>();
+            for (int i = 0; i < backgroundJobs.size(); i++) {
+                Job job = backgroundJobs.get(i);
+                
+                if (!job.process.isAlive()) {
+                    char sign = ' ';
+                    if (i == backgroundJobs.size() - 1) {
+                        sign = '+';
+                    } else if (i == backgroundJobs.size() - 2) {
+                        sign = '-';
+                    }
+                    // Print the Done message (without trailing &)
+                    System.out.printf("[%d]%c  %-24s%s\n", job.id, sign, "Done", job.command);
+                    reapedBeforePrompt.add(job);
+                }
+            }
+            backgroundJobs.removeAll(reapedBeforePrompt);
+
+            // Print the shell prompt
             System.out.print("$ ");
             
             if (scanner.hasNextLine()) {
@@ -140,7 +161,6 @@ public class Main {
                     for (int i = 0; i < backgroundJobs.size(); i++) {
                         Job job = backgroundJobs.get(i);
                         
-                        // Dynamically figure out +/- signs for multiple jobs
                         char sign = ' ';
                         if (i == backgroundJobs.size() - 1) {
                             sign = '+';
@@ -160,7 +180,6 @@ public class Main {
                         }
                     }
                     
-                    // Remove ALL dead jobs we just found in one go
                     backgroundJobs.removeAll(toRemove);
                     
                     if (!outputLines.isEmpty()) {
