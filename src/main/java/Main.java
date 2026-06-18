@@ -29,30 +29,6 @@ public class Main {
         String currentDirectory = System.getProperty("user.dir");
         
         while (true) {
-            
-            // --- Reap before the next prompt & Recycle Job IDs ---
-            List<Job> reaped = new ArrayList<>();
-            for (int i = 0; i < backgroundJobs.size(); i++) {
-                Job job = backgroundJobs.get(i);
-                // If a job died while we were waiting, print it and mark it for removal
-                if (!job.process.isAlive()) {
-                    char sign = ' ';
-                    if (i == backgroundJobs.size() - 1) {
-                        sign = '+';
-                    } else if (i == backgroundJobs.size() - 2) {
-                        sign = '-';
-                    }
-                    System.out.printf("[%d]%c  %-24s%s &\n", job.id, sign, "Done", job.command);
-                    reaped.add(job);
-                }
-            }
-            backgroundJobs.removeAll(reaped);
-            
-            // If the slate is totally clean, recycle the job numbers back to 1
-            if (backgroundJobs.isEmpty()) {
-                nextJobId = 1;
-            }
-
             System.out.print("$ ");
             
             if (scanner.hasNextLine()) {
@@ -164,7 +140,6 @@ public class Main {
                     for (int i = 0; i < backgroundJobs.size(); i++) {
                         Job job = backgroundJobs.get(i);
                         
-                        // Determine sign: last item gets '+', second to last gets '-', others get ' '
                         char sign = ' ';
                         if (i == backgroundJobs.size() - 1) {
                             sign = '+';
@@ -173,17 +148,18 @@ public class Main {
                         }
                         
                         if (job.process.isAlive()) {
+                            // Running jobs still have the '&'
                             String formatted = String.format("[%d]%c  %-24s%s &", job.id, sign, "Running", job.command);
                             outputLines.add(formatted);
                         } else {
-                            String formatted = String.format("[%d]%c  %-24s%s &", job.id, sign, "Done", job.command);
+                            // Done jobs DO NOT have the '&' as per the screenshot
+                            String formatted = String.format("[%d]%c  %-24s%s", job.id, sign, "Done", job.command);
                             outputLines.add(formatted);
                             toRemove.add(job);
                         }
                     }
                     
                     backgroundJobs.removeAll(toRemove);
-                    if (backgroundJobs.isEmpty()) nextJobId = 1;
                     
                     if (!outputLines.isEmpty()) {
                         printOutput(String.join("\n", outputLines), redirectOutFile, currentDirectory, appendOut);
