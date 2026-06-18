@@ -29,6 +29,23 @@ public class Main {
         String currentDirectory = System.getProperty("user.dir");
         
         while (true) {
+            
+            // --- NEW: Reap before the next prompt & Recycle Job IDs ---
+            List<Job> reaped = new ArrayList<>();
+            for (Job job : backgroundJobs) {
+                // If a job died while we were waiting, print it and mark it for removal
+                if (!job.process.isAlive()) {
+                    System.out.println("[" + job.id + "] + Done " + job.command + " &");
+                    reaped.add(job);
+                }
+            }
+            backgroundJobs.removeAll(reaped);
+            
+            // If the slate is totally clean, recycle the job numbers back to 1
+            if (backgroundJobs.isEmpty()) {
+                nextJobId = 1;
+            }
+
             System.out.print("$ ");
             
             if (scanner.hasNextLine()) {
@@ -135,19 +152,19 @@ public class Main {
                 // 5. Check for jobs
                 else if (command.equals("jobs")) {
                     List<String> outputLines = new ArrayList<>();
-                    List<Job> toRemove = new ArrayList<>(); // NEW: Track finished jobs
+                    List<Job> toRemove = new ArrayList<>();
                     
                     for (Job job : backgroundJobs) {
                         if (job.process.isAlive()) {
                             outputLines.add("[" + job.id + "] + Running " + job.command + " &");
                         } else {
                             outputLines.add("[" + job.id + "] + Done " + job.command + " &");
-                            toRemove.add(job); // Mark it for the Grim Reaper!
+                            toRemove.add(job);
                         }
                     }
                     
-                    // REAP: Remove all finished jobs so they don't print next time
                     backgroundJobs.removeAll(toRemove);
+                    if (backgroundJobs.isEmpty()) nextJobId = 1;
                     
                     if (!outputLines.isEmpty()) {
                         printOutput(String.join("\n", outputLines), redirectOutFile, currentDirectory, appendOut);
