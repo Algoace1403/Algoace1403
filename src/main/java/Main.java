@@ -22,7 +22,7 @@ public class Main {
     }
 
     private static List<Job> backgroundJobs = new ArrayList<>();
-    private static int nextJobId = 1;
+    // Notice: We removed the nextJobId variable, as we calculate it dynamically now!
 
     public static void main(String[] args) throws Exception {
         Scanner scanner = new Scanner(System.in);
@@ -30,26 +30,16 @@ public class Main {
         
         while (true) {
             
-            // --- NEW: Reap before the next prompt ---
-            List<Job> reapedBeforePrompt = new ArrayList<>();
-            for (int i = 0; i < backgroundJobs.size(); i++) {
-                Job job = backgroundJobs.get(i);
-                
+            // --- REAP BEFORE PROMPT ---
+            List<Job> reaped = new ArrayList<>();
+            for (Job job : backgroundJobs) {
                 if (!job.process.isAlive()) {
-                    char sign = ' ';
-                    if (i == backgroundJobs.size() - 1) {
-                        sign = '+';
-                    } else if (i == backgroundJobs.size() - 2) {
-                        sign = '-';
-                    }
-                    // Print the Done message (without trailing &)
-                    System.out.printf("[%d]%c  %-24s%s\n", job.id, sign, "Done", job.command);
-                    reapedBeforePrompt.add(job);
+                    System.out.println("[" + job.id + "] + Done " + job.command + " &");
+                    reaped.add(job);
                 }
             }
-            backgroundJobs.removeAll(reapedBeforePrompt);
+            backgroundJobs.removeAll(reaped);
 
-            // Print the shell prompt
             System.out.print("$ ");
             
             if (scanner.hasNextLine()) {
@@ -158,24 +148,11 @@ public class Main {
                     List<String> outputLines = new ArrayList<>();
                     List<Job> toRemove = new ArrayList<>();
                     
-                    for (int i = 0; i < backgroundJobs.size(); i++) {
-                        Job job = backgroundJobs.get(i);
-                        
-                        char sign = ' ';
-                        if (i == backgroundJobs.size() - 1) {
-                            sign = '+';
-                        } else if (i == backgroundJobs.size() - 2) {
-                            sign = '-';
-                        }
-                        
+                    for (Job job : backgroundJobs) {
                         if (job.process.isAlive()) {
-                            // Running jobs still have the '&'
-                            String formatted = String.format("[%d]%c  %-24s%s &", job.id, sign, "Running", job.command);
-                            outputLines.add(formatted);
+                            outputLines.add("[" + job.id + "] + Running " + job.command + " &");
                         } else {
-                            // Done jobs DO NOT have the '&'
-                            String formatted = String.format("[%d]%c  %-24s%s", job.id, sign, "Done", job.command);
-                            outputLines.add(formatted);
+                            outputLines.add("[" + job.id + "] + Done " + job.command + " &");
                             toRemove.add(job);
                         }
                     }
@@ -251,7 +228,21 @@ public class Main {
                         Process process = pb.start();
                         
                         if (isBackground) {
-                            Job job = new Job(nextJobId++, process, String.join(" ", commandTokens));
+                            // --- UPGRADED: Find the smallest available integer ---
+                            int newJobId = 1;
+                            while (true) {
+                                boolean taken = false;
+                                for (Job j : backgroundJobs) {
+                                    if (j.id == newJobId) {
+                                        taken = true;
+                                        break;
+                                    }
+                                }
+                                if (!taken) break;
+                                newJobId++;
+                            }
+                            
+                            Job job = new Job(newJobId, process, String.join(" ", commandTokens));
                             backgroundJobs.add(job);
                             System.out.println("[" + job.id + "] " + process.pid());
                         } else {
