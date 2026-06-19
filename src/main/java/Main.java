@@ -8,6 +8,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.LinkedList;
 import java.util.Arrays;
+import java.util.concurrent.TimeUnit;
 
 public class Main {
     
@@ -38,6 +39,12 @@ public class Main {
             sortedReap.sort((j1, j2) -> Integer.compare(j1.id, j2.id));
 
             for (Job job : sortedReap) {
+                try {
+                    // Fixes race condition: Give the OS a tiny window to update the process state 
+                    // before checking if it's alive. If it's already dead, this returns instantly.
+                    job.process.waitFor(25, TimeUnit.MILLISECONDS);
+                } catch (Exception e) {}
+
                 if (!job.process.isAlive()) {
                     char marker = ' ';
                     if (!jobHistory.isEmpty() && jobHistory.getLast() == job.id) {
@@ -279,6 +286,12 @@ public class Main {
                     sortedJobs.sort((j1, j2) -> Integer.compare(j1.id, j2.id));
                     
                     for (Job job : sortedJobs) {
+                        try {
+                            // Apply the same tiny grace period here just in case a job 
+                            // dies the exact millisecond the user runs the `jobs` command
+                            job.process.waitFor(10, TimeUnit.MILLISECONDS);
+                        } catch (Exception e) {}
+
                         char marker = ' ';
                         if (!jobHistory.isEmpty() && jobHistory.getLast() == job.id) {
                             marker = '+';
