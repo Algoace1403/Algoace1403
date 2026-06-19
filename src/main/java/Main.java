@@ -6,6 +6,7 @@ import java.nio.file.Files;
 import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.LinkedList;
 
 public class Main {
     
@@ -22,6 +23,8 @@ public class Main {
     }
 
     private static List<Job> backgroundJobs = new ArrayList<>();
+    // Tracks the chronological order of job IDs to determine + and - markers
+    private static LinkedList<Integer> jobHistory = new LinkedList<>();
 
     public static void main(String[] args) throws Exception {
         Scanner scanner = new Scanner(System.in);
@@ -31,14 +34,28 @@ public class Main {
             
             // --- REAP BEFORE PROMPT ---
             List<Job> reaped = new ArrayList<>();
-            for (Job job : backgroundJobs) {
+            // Sort by ID to ensure output is in numeric order
+            List<Job> sortedReap = new ArrayList<>(backgroundJobs);
+            sortedReap.sort((j1, j2) -> Integer.compare(j1.id, j2.id));
+
+            for (Job job : sortedReap) {
                 if (!job.process.isAlive()) {
-                    // FIXED FORMATTING: [id]+  Done followed by exact spacing, no &
-                    System.out.printf("[%d]+  Done                    %s\n", job.id, job.command);
+                    char marker = ' ';
+                    if (!jobHistory.isEmpty() && jobHistory.getLast() == job.id) {
+                        marker = '+';
+                    } else if (jobHistory.size() >= 2 && jobHistory.get(jobHistory.size() - 2) == job.id) {
+                        marker = '-';
+                    }
+                    
+                    System.out.printf("[%d]%c  Done                    %s\n", job.id, marker, job.command);
                     reaped.add(job);
                 }
             }
-            backgroundJobs.removeAll(reaped);
+            
+            for (Job j : reaped) {
+                backgroundJobs.remove(j);
+                jobHistory.remove((Integer) j.id);
+            }
 
             System.out.print("$ ");
             
@@ -148,18 +165,30 @@ public class Main {
                     List<String> outputLines = new ArrayList<>();
                     List<Job> toRemove = new ArrayList<>();
                     
-                    for (Job job : backgroundJobs) {
+                    // Sort by ID to ensure output is in numeric order
+                    List<Job> sortedJobs = new ArrayList<>(backgroundJobs);
+                    sortedJobs.sort((j1, j2) -> Integer.compare(j1.id, j2.id));
+                    
+                    for (Job job : sortedJobs) {
+                        char marker = ' ';
+                        if (!jobHistory.isEmpty() && jobHistory.getLast() == job.id) {
+                            marker = '+';
+                        } else if (jobHistory.size() >= 2 && jobHistory.get(jobHistory.size() - 2) == job.id) {
+                            marker = '-';
+                        }
+
                         if (job.process.isAlive()) {
-                            // FIXED FORMATTING
-                            outputLines.add(String.format("[%d]+  Running                 %s &", job.id, job.command));
+                            outputLines.add(String.format("[%d]%c  Running                 %s &", job.id, marker, job.command));
                         } else {
-                            // FIXED FORMATTING
-                            outputLines.add(String.format("[%d]+  Done                    %s", job.id, job.command));
+                            outputLines.add(String.format("[%d]%c  Done                    %s", job.id, marker, job.command));
                             toRemove.add(job);
                         }
                     }
                     
-                    backgroundJobs.removeAll(toRemove);
+                    for (Job j : toRemove) {
+                        backgroundJobs.remove(j);
+                        jobHistory.remove((Integer) j.id);
+                    }
                     
                     if (!outputLines.isEmpty()) {
                         printOutput(String.join("\n", outputLines), redirectOutFile, currentDirectory, appendOut);
@@ -245,6 +274,11 @@ public class Main {
                             
                             Job job = new Job(newJobId, process, String.join(" ", commandTokens));
                             backgroundJobs.add(job);
+                            
+                            // Maintain chronological history
+                            jobHistory.remove((Integer) newJobId); 
+                            jobHistory.addLast(newJobId);
+                            
                             System.out.println("[" + job.id + "] " + process.pid());
                         } else {
                             process.waitFor(); 
