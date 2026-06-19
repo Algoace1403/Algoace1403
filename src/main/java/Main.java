@@ -131,67 +131,85 @@ public class Main {
                     Files.writeString(eFile.toPath(), ""); 
                 }
 
-                // --- PIPELINE LOGIC ---
+                // --- MULTI-COMMAND PIPELINE LOGIC ---
                 int pipeIdx = commandTokens.indexOf("|");
                 if (pipeIdx != -1) {
-                    List<String> leftCmd = commandTokens.subList(0, pipeIdx);
-                    List<String> rightCmd = commandTokens.subList(pipeIdx + 1, commandTokens.size());
+                    List<List<String>> pipelineCommands = new ArrayList<>();
+                    List<String> currentCmd = new ArrayList<>();
+                    for (String t : commandTokens) {
+                        if (t.equals("|")) {
+                            pipelineCommands.add(currentCmd);
+                            currentCmd = new ArrayList<>();
+                        } else {
+                            currentCmd.add(t);
+                        }
+                    }
+                    pipelineCommands.add(currentCmd);
+
+                    String builtinInput = null;
+                    int startIndex = 0;
                     
-                    String lCommand = leftCmd.get(0);
-                    String rCommand = rightCmd.get(0);
+                    // 1. Check if first command is builtin
+                    if (isBuiltin(pipelineCommands.get(0).get(0))) {
+                        builtinInput = executeBuiltinToString(pipelineCommands.get(0), currentDirectory, null, false);
+                        startIndex = 1;
+                    }
                     
-                    boolean isLeftBuiltin = isBuiltin(lCommand);
-                    boolean isRightBuiltin = isBuiltin(rCommand);
+                    // 2. Check if last command is builtin
+                    int endIndex = pipelineCommands.size();
+                    boolean lastIsBuiltin = false;
+                    if (startIndex < pipelineCommands.size() && isBuiltin(pipelineCommands.get(pipelineCommands.size() - 1).get(0))) {
+                        lastIsBuiltin = true;
+                        endIndex = pipelineCommands.size() - 1;
+                    }
+                    
+                    // 3. Build external processes for the middle
+                    List<ProcessBuilder> builders = new ArrayList<>();
+                    for (int i = startIndex; i < endIndex; i++) {
+                        ProcessBuilder pb = new ProcessBuilder(pipelineCommands.get(i));
+                        pb.directory(new File(currentDirectory));
+                        builders.add(pb);
+                    }
 
                     try {
-                        if (isLeftBuiltin && isRightBuiltin) {
-                            // Left outputs to string, right ignores it and outputs natively
-                            executeBuiltinToString(leftCmd, currentDirectory, null, false);
-                            String rightOut = executeBuiltinToString(rightCmd, currentDirectory, redirectErrFile, appendErr);
-                            if (rightOut.endsWith("\n")) rightOut = rightOut.substring(0, rightOut.length() - 1);
-                            if (!rightOut.isEmpty()) printOutput(rightOut, redirectOutFile, currentDirectory, appendOut);
-                        } 
-                        else if (isLeftBuiltin && !isRightBuiltin) {
-                            // Left to string -> pipe to Right Process
-                            String leftOutput = executeBuiltinToString(leftCmd, currentDirectory, null, false);
+                        if (!builders.isEmpty()) {
+                            // Only apply redirects to the final external output
+                            if (!lastIsBuiltin) {
+                                ProcessBuilder lastPb = builders.get(builders.size() - 1);
+                                applyProcessRedirects(lastPb, redirectOutFile, redirectErrFile, appendOut, appendErr, currentDirectory);
+                            } else {
+                                ProcessBuilder lastPb = builders.get(builders.size() - 1);
+                                lastPb.redirectOutput(ProcessBuilder.Redirect.DISCARD);
+                            }
                             
-                            ProcessBuilder pbRight = new ProcessBuilder(rightCmd);
-                            pbRight.directory(new File(currentDirectory));
-                            applyProcessRedirects(pbRight, redirectOutFile, redirectErrFile, appendOut, appendErr, currentDirectory);
+                            List<Process> processes = ProcessBuilder.startPipeline(builders);
                             
-                            Process rightProcess = pbRight.start();
-                            java.io.OutputStream os = rightProcess.getOutputStream();
-                            os.write(leftOutput.getBytes());
-                            os.flush();
-                            os.close();
+                            // Feed the builtin string output to the first external process
+                            if (builtinInput != null) {
+                                java.io.OutputStream os = processes.get(0).getOutputStream();
+                                os.write(builtinInput.getBytes());
+                                os.flush();
+                                os.close();
+                            }
                             
-                            handleBackgroundJob(rightProcess, isBackground, commandTokens);
-                        } 
-                        else if (!isLeftBuiltin && isRightBuiltin) {
-                            // Left Process outputs to nowhere -> Right built-in executes natively
-                            ProcessBuilder pbLeft = new ProcessBuilder(leftCmd);
-                            pbLeft.directory(new File(currentDirectory));
-                            pbLeft.redirectOutput(ProcessBuilder.Redirect.DISCARD);
-                            Process leftProcess = pbLeft.start();
-                            leftProcess.waitFor();
+                            Process lastExtProcess = processes.get(processes.size() - 1);
                             
-                            String rightOut = executeBuiltinToString(rightCmd, currentDirectory, redirectErrFile, appendErr);
-                            if (rightOut.endsWith("\n")) rightOut = rightOut.substring(0, rightOut.length() - 1);
-                            if (!rightOut.isEmpty()) printOutput(rightOut, redirectOutFile, currentDirectory, appendOut);
-                        } 
-                        else {
-                            // Both External -> OS Level Pipeline
-                            ProcessBuilder pbLeft = new ProcessBuilder(leftCmd);
-                            pbLeft.directory(new File(currentDirectory));
-                            
-                            ProcessBuilder pbRight = new ProcessBuilder(rightCmd);
-                            pbRight.directory(new File(currentDirectory));
-                            applyProcessRedirects(pbRight, redirectOutFile, redirectErrFile, appendOut, appendErr, currentDirectory);
-                            
-                            List<Process> processes = ProcessBuilder.startPipeline(Arrays.asList(pbLeft, pbRight));
-                            Process rightProcess = processes.get(processes.size() - 1);
-                            
-                            handleBackgroundJob(rightProcess, isBackground, commandTokens);
+                            // If the pipeline ended in a built-in, execute it now that external jobs are running
+                            if (lastIsBuiltin) {
+                                lastExtProcess.waitFor();
+                                String rightOut = executeBuiltinToString(pipelineCommands.get(pipelineCommands.size() - 1), currentDirectory, redirectErrFile, appendErr);
+                                if (rightOut.endsWith("\n")) rightOut = rightOut.substring(0, rightOut.length() - 1);
+                                if (!rightOut.isEmpty()) printOutput(rightOut, redirectOutFile, currentDirectory, appendOut);
+                            } else {
+                                handleBackgroundJob(lastExtProcess, isBackground, commandTokens);
+                            }
+                        } else {
+                            // Edge case: Pipeline is entirely built-ins
+                            if (lastIsBuiltin) {
+                                String rightOut = executeBuiltinToString(pipelineCommands.get(pipelineCommands.size() - 1), currentDirectory, redirectErrFile, appendErr);
+                                if (rightOut.endsWith("\n")) rightOut = rightOut.substring(0, rightOut.length() - 1);
+                                if (!rightOut.isEmpty()) printOutput(rightOut, redirectOutFile, currentDirectory, appendOut);
+                            }
                         }
                     } catch (Exception e) {
                         printError("pipeline command not found", redirectErrFile, currentDirectory, appendErr);
