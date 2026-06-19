@@ -7,6 +7,7 @@ import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.LinkedList;
+import java.util.Arrays;
 
 public class Main {
     
@@ -23,7 +24,6 @@ public class Main {
     }
 
     private static List<Job> backgroundJobs = new ArrayList<>();
-    // Tracks the chronological order of job IDs to determine + and - markers
     private static LinkedList<Integer> jobHistory = new LinkedList<>();
 
     public static void main(String[] args) throws Exception {
@@ -34,7 +34,6 @@ public class Main {
             
             // --- REAP BEFORE PROMPT ---
             List<Job> reaped = new ArrayList<>();
-            // Sort by ID to ensure output is in numeric order
             List<Job> sortedReap = new ArrayList<>(backgroundJobs);
             sortedReap.sort((j1, j2) -> Integer.compare(j1.id, j2.id));
 
@@ -127,6 +126,117 @@ public class Main {
                     Files.writeString(eFile.toPath(), ""); 
                 }
 
+                // --- PIPELINE LOGIC ---
+                int pipeIdx = commandTokens.indexOf("|");
+                if (pipeIdx != -1) {
+                    List<String> leftCmd = commandTokens.subList(0, pipeIdx);
+                    List<String> rightCmd = commandTokens.subList(pipeIdx + 1, commandTokens.size());
+                    
+                    String lCommand = leftCmd.get(0);
+                    boolean isLeftBuiltin = lCommand.equals("echo") || lCommand.equals("pwd") || 
+                                            lCommand.equals("type") || lCommand.equals("jobs") || 
+                                            lCommand.equals("cd") || lCommand.equals("exit");
+
+                    try {
+                        Process rightProcess = null;
+                        ProcessBuilder pbRight = new ProcessBuilder(rightCmd);
+                        pbRight.directory(new File(currentDirectory));
+                        
+                        if (redirectOutFile != null) {
+                            File rFile = Paths.get(currentDirectory).resolve(redirectOutFile).toFile();
+                            if (appendOut) pbRight.redirectOutput(ProcessBuilder.Redirect.appendTo(rFile));
+                            else pbRight.redirectOutput(rFile);
+                        } else {
+                            pbRight.redirectOutput(ProcessBuilder.Redirect.INHERIT);
+                        }
+
+                        if (redirectErrFile != null) {
+                            File eFile = Paths.get(currentDirectory).resolve(redirectErrFile).toFile();
+                            if (appendErr) pbRight.redirectError(ProcessBuilder.Redirect.appendTo(eFile));
+                            else pbRight.redirectError(eFile);
+                        } else {
+                            pbRight.redirectError(ProcessBuilder.Redirect.INHERIT);
+                        }
+
+                        if (isLeftBuiltin) {
+                            StringBuilder leftOutput = new StringBuilder();
+                            if (lCommand.equals("echo")) {
+                                leftOutput.append(String.join(" ", leftCmd.subList(1, leftCmd.size()))).append("\n");
+                            } else if (lCommand.equals("pwd")) {
+                                leftOutput.append(currentDirectory).append("\n");
+                            } else if (lCommand.equals("type")) {
+                                if (leftCmd.size() > 1) {
+                                    String cmdToCheck = leftCmd.get(1);
+                                    if (cmdToCheck.equals("exit") || cmdToCheck.equals("echo") || 
+                                        cmdToCheck.equals("type") || cmdToCheck.equals("pwd") || 
+                                        cmdToCheck.equals("cd") || cmdToCheck.equals("jobs")) {
+                                        leftOutput.append(cmdToCheck).append(" is a shell builtin\n");
+                                    } else {
+                                        String pathEnv = System.getenv("PATH");
+                                        boolean found = false;
+                                        if (pathEnv != null) {
+                                            for (String p : pathEnv.split(":")) {
+                                                File f = new File(p + "/" + cmdToCheck);
+                                                if (f.exists() && f.canExecute()) {
+                                                    leftOutput.append(cmdToCheck).append(" is ").append(f.getAbsolutePath()).append("\n");
+                                                    found = true;
+                                                    break;
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            } else if (lCommand.equals("jobs")) {
+                                List<Job> sortedJobs = new ArrayList<>(backgroundJobs);
+                                sortedJobs.sort((j1, j2) -> Integer.compare(j1.id, j2.id));
+                                for (Job job : sortedJobs) {
+                                    char marker = ' ';
+                                    if (!jobHistory.isEmpty() && jobHistory.getLast() == job.id) marker = '+';
+                                    else if (jobHistory.size() >= 2 && jobHistory.get(jobHistory.size() - 2) == job.id) marker = '-';
+                                    if (job.process.isAlive()) {
+                                        leftOutput.append(String.format("[%d]%c  Running                 %s &\n", job.id, marker, job.command));
+                                    } else {
+                                        leftOutput.append(String.format("[%d]%c  Done                    %s\n", job.id, marker, job.command));
+                                    }
+                                }
+                            }
+
+                            rightProcess = pbRight.start();
+                            java.io.OutputStream os = rightProcess.getOutputStream();
+                            os.write(leftOutput.toString().getBytes());
+                            os.flush();
+                            os.close();
+                        } else {
+                            ProcessBuilder pbLeft = new ProcessBuilder(leftCmd);
+                            pbLeft.directory(new File(currentDirectory));
+                            List<Process> processes = ProcessBuilder.startPipeline(Arrays.asList(pbLeft, pbRight));
+                            rightProcess = processes.get(processes.size() - 1);
+                        }
+
+                        if (isBackground && rightProcess != null) {
+                            int newJobId = 1;
+                            while (true) {
+                                boolean taken = false;
+                                for (Job j : backgroundJobs) {
+                                    if (j.id == newJobId) { taken = true; break; }
+                                }
+                                if (!taken) break;
+                                newJobId++;
+                            }
+                            Job job = new Job(newJobId, rightProcess, String.join(" ", commandTokens));
+                            backgroundJobs.add(job);
+                            jobHistory.remove((Integer) newJobId);
+                            jobHistory.addLast(newJobId);
+                            System.out.println("[" + job.id + "] " + rightProcess.pid());
+                        } else if (rightProcess != null) {
+                            rightProcess.waitFor();
+                        }
+                    } catch (Exception e) {
+                        printError("pipeline command not found", redirectErrFile, currentDirectory, appendErr);
+                    }
+                    continue; 
+                }
+
                 // 1. Check for exit
                 if (command.equals("exit")) {
                     break;
@@ -165,7 +275,6 @@ public class Main {
                     List<String> outputLines = new ArrayList<>();
                     List<Job> toRemove = new ArrayList<>();
                     
-                    // Sort by ID to ensure output is in numeric order
                     List<Job> sortedJobs = new ArrayList<>(backgroundJobs);
                     sortedJobs.sort((j1, j2) -> Integer.compare(j1.id, j2.id));
                     
@@ -275,7 +384,6 @@ public class Main {
                             Job job = new Job(newJobId, process, String.join(" ", commandTokens));
                             backgroundJobs.add(job);
                             
-                            // Maintain chronological history
                             jobHistory.remove((Integer) newJobId); 
                             jobHistory.addLast(newJobId);
                             
